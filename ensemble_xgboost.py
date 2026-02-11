@@ -56,7 +56,7 @@ final_pred = meta_model.predict(meta_X)
 
 # === Evaluate
 mae = mean_absolute_error(meta_y, final_pred)
-print(f"\n✅ Stacked Model MAE: {round(mae, 4)}")
+print(f"\n Stacked Model MAE: {round(mae, 4)}")
 
 # === Optional plot
 import matplotlib.pyplot as plt
