@@ -17,9 +17,7 @@ from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
 
-# ============================================================
-# PLOT STYLE SETTINGS (HIGH QUALITY)
-# ============================================================
+# PLOT STYLE SETTINGS
 
 plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_context("talk")
@@ -29,9 +27,7 @@ plt.rcParams["axes.labelsize"] = 14
 plt.rcParams["legend.fontsize"] = 12
 plt.rcParams["lines.linewidth"] = 2
 
-# ============================================================
 # LOAD & PREPROCESS
-# ============================================================
 
 df = pd.read_csv("Final.csv", parse_dates=["date"])
 df = df.sort_values(["user_id", "date"])
@@ -68,9 +64,7 @@ groups = df["user_id"]
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# ============================================================
 # BASE MODELS
-# ============================================================
 
 base_models = [
     SVR(kernel="linear", C=1.0),
@@ -78,9 +72,7 @@ base_models = [
     RandomForestRegressor(n_estimators=200, random_state=42)
 ]
 
-# ============================================================
 # META MODELS
-# ============================================================
 
 meta_models = {
     "XGBoost": XGBRegressor(n_estimators=200, random_state=42),
@@ -89,9 +81,7 @@ meta_models = {
     "ElasticNet": ElasticNet(alpha=0.1, l1_ratio=0.5)
 }
 
-# ============================================================
 # NESTED GROUPKFOLD EVALUATION
-# ============================================================
 
 outer_gkf = GroupKFold(n_splits=5)
 results = {}
@@ -147,9 +137,7 @@ comparison_df = pd.DataFrame(results).T.round(4)
 print("\n📊 FINAL META-MODEL COMPARISON")
 print(comparison_df)
 
-# ============================================================
 # HIGH-QUALITY META MODEL COMPARISON PLOT
-# ============================================================
 
 comparison_df.plot(kind="bar", colormap="viridis")
 plt.title("Meta-Model Performance Comparison")
@@ -158,9 +146,7 @@ plt.xticks(rotation=0)
 plt.tight_layout()
 plt.show()
 
-# ============================================================
 # CROSS-VALIDATED ACTUAL vs PREDICTED
-# ============================================================
 
 plt.figure()
 plt.plot(y.values[:100], label="Actual")
@@ -182,9 +168,7 @@ plt.title("Actual vs Predicted (Scatter)")
 plt.tight_layout()
 plt.show()
 
-# ============================================================
 # FINAL MODEL FOR DEPLOYMENT
-# ============================================================
 
 final_meta_features = np.zeros((X_scaled.shape[0], len(base_models)))
 
@@ -197,9 +181,7 @@ final_meta_model.fit(final_meta_features, y)
 
 df["predicted_stress"] = final_meta_model.predict(final_meta_features)
 
-# ============================================================
 # PERSONALIZATION & CLASSIFICATION
-# ============================================================
 
 df["personalized_stress"] = (
     df["predicted_stress"] - df["user_mean_stress"]
@@ -214,9 +196,7 @@ def stress_label(x):
 
 df["stress_category"] = df["personalized_stress"].apply(stress_label)
 
-# ============================================================
 # SHAP (BEHAVIORAL FEATURES ONLY)
-# ============================================================
 
 scaler_beh = StandardScaler()
 X_beh_scaled = scaler_beh.fit_transform(X_behavioral)
@@ -242,9 +222,9 @@ shap.summary_plot(
     show=True
 )
 
-# ============================================================
+
 #  HUMAN-READABLE EXPLANATION
-# ============================================================
+
 
 sample_idx = 0
 shap_vals_user = shap_values[sample_idx]
