@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import shap
+import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import ElasticNet, Lasso
@@ -12,18 +13,22 @@ from xgboost import XGBRegressor
 from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
 
-# ===============================
+import joblib
+
+base_models = joblib.load("base_models.pkl")
+scaler = joblib.load("scaler.pkl")
+
+
 # PAGE CONFIG
-# ===============================
 st.set_page_config(
     page_title="Interpretable Stacked Ensemble for Personlized Stress Prediction",
     layout="wide",
     page_icon="🧠"
 )
 
-# ===============================
+
 # 🎨 CALM UI THEME (SAGE + BLUE)
-# ===============================
+
 st.markdown("""
 <style>
 
@@ -34,7 +39,7 @@ st.markdown("""
 
 /* Text */
 h1, h2, h3, p {
-    color: ffffff;
+    color: #1f2937;
 }
 
 /* Cards */
@@ -75,13 +80,33 @@ h1, h2, h3, p {
             color: #000000;
             }
 }
+            
+/* dropdown going behind */
+div[data-baseweb="select"] {
+    z-index: 9999 !important;
+}
+
+/* popover */
+div[data-baseweb="popover"] {
+    z-index: 9999 !important;
+}
+            
+/* Sidebar dropdown fix */
+section[data-testid="stSidebar"] {
+    z-index: 10000 !important;
+}
+
+/* Ensure sidebar content stays above */
+section[data-testid="stSidebar"] * {
+    z-index: 10000 !important;
+}
 
 </style>
 """, unsafe_allow_html=True)
 
-# ===============================
+
 # HEADER
-# ===============================
+
 st.markdown("""
 # 🧠 Interpretable Stacked Ensemble for Personlized Stress Prediction
 ### Personalized Stress Intelligence Platform
@@ -89,9 +114,9 @@ st.markdown("""
 
 st.caption("Calm UI • Explainable AI • Personalized Insights")
 
-# ===============================
+
 # SIDEBAR
-# ===============================
+
 st.sidebar.title("⚙️ Controls")
 
 model_choice = st.sidebar.selectbox(
@@ -104,9 +129,9 @@ input_type = st.sidebar.radio(
     ["Manual Input (3 Days)", "Upload CSV"]
 )
 
-# ===============================
+
 # MODELS
-# ===============================
+
 def get_base_models():
     return [
         SVR(kernel="linear"),
@@ -115,18 +140,21 @@ def get_base_models():
     ]
 
 def get_meta_model(name):
+    
     if name == "ElasticNet":
-        return ElasticNet(alpha=0.1, l1_ratio=0.5)
-    elif name == "XGBoost":
-        return XGBRegressor(n_estimators=100)
-    elif name == "CatBoost":
-        return CatBoostRegressor(verbose=0)
-    elif name == "LightGBM":
-        return LGBMRegressor()
+        return joblib.load("elastic.pkl")
 
-# ===============================
+    elif name == "XGBoost":
+        return joblib.load("xgb.pkl")
+
+    elif name == "CatBoost":
+        return joblib.load("cat.pkl")
+
+    elif name == "LightGBM":
+        return joblib.load("lgbm.pkl")
+
 # INPUT SECTION
-# ===============================
+
 st.markdown("## 📥 Behavioral Input (3-Day Average)")
 
 if input_type == "Manual Input (3 Days)":
@@ -142,60 +170,92 @@ if input_type == "Manual Input (3 Days)":
             d3 = st.number_input(f"{feature} - Day 3 (min)", 0.0, key=feature+"3")
 
         return (d1 + d2 + d3) / 3
+    
+    screen = input_3day("Screen Time (minutes)")
+    conv = input_3day("Conversation (minutes)")
+    mobility = input_3day("Mobility (km)")
+    dark = input_3day("Dark Time (hours)")
+    stress_avg = input_3day("Recent Stress Level")
 
-    screen = input_3day("Screen Time")
-    conv = input_3day("Conversation")
-    mobility = input_3day("Mobility")
-    sleep = input_3day("Sleep")
-    dark = input_3day("Dark Time")
+    input_data = pd.DataFrame([[
+        screen,
+        conv,
+        mobility,
+        dark,
+        stress_avg
+    ]], columns=[
+        "screen_time_total",
+        "average_conversation_duration",
+        "total_distance_km",
+        "avg_dark_time",
+        "stress_3day_avg"
+    ])
+
+    # screen = input_3day("Screen Time")
+    # conv = input_3day("Conversation")
+    # mobility = input_3day("Mobility")
+    # sleep = input_3day("Sleep")
+    # dark = input_3day("Dark Time")
 
     # Baseline from 3-day data
-    baseline = np.mean([screen, conv, mobility, sleep, dark])
+    # baseline = np.mean([screen, conv, mobility, sleep, dark])
 
-    input_data = pd.DataFrame([[screen, conv, mobility, sleep, dark]])
+    # input_data = pd.DataFrame([[screen, conv, mobility, sleep, dark]])
 
 else:
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    
     if uploaded_file:
         input_data = pd.read_csv(uploaded_file)
-        baseline = input_data.mean().mean()
+
+        # Ensure required columns exist
+        required_cols = [
+            "screen_time_total",
+            "average_conversation_duration",
+            "total_distance_km",
+            "avg_dark_time",
+            "stress_3day_avg"
+        ]
+
+        input_data = input_data[required_cols]
+
+        # Use correct baseline
+        stress_avg = input_data["stress_3day_avg"].iloc[0]
+
     else:
         input_data = None
-        baseline = None
+        stress_avg = None
 
-# ===============================
+
 # PREDICTION
-# ===============================
+
 if st.button("🚀 Analyze Stress", use_container_width=True):
 
     if input_data is None:
         st.warning("Please provide input data")
     else:
 
-        # Dummy training (replace later with real model)
-        X_train = np.random.rand(100, input_data.shape[1])
-        y_train = np.random.rand(100)
+        # LOAD META MODEL (based on user)
+        meta_model = get_meta_model(model_choice)
 
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
+
+        # TRANSFORM INPUT
+
         X_input = scaler.transform(input_data)
 
-        base_models = get_base_models()
+        # CREATE META FEATURES
 
-        meta_train = np.zeros((100, len(base_models)))
         meta_input = np.zeros((input_data.shape[0], len(base_models)))
 
         for i, model in enumerate(base_models):
-            model.fit(X_train, y_train)
-            meta_train[:, i] = model.predict(X_train)
             meta_input[:, i] = model.predict(X_input)
 
-        meta_model = get_meta_model(model_choice)
-        meta_model.fit(meta_train, y_train)
+        # FINAL PREDICTION
 
         pred = meta_model.predict(meta_input)[0]
 
-        personalized = pred - baseline
+
+        personalized = pred - stress_avg
 
         if personalized < -0.5:
             risk = "Low"
@@ -209,9 +269,9 @@ if st.button("🚀 Analyze Stress", use_container_width=True):
 
 
 
-        # ===============================
+        
         # OUTPUT
-        # ===============================
+        
         st.markdown("## 📊 Insights")
 
         c1, c2, c3 = st.columns(3)
@@ -228,7 +288,7 @@ if st.button("🚀 Analyze Stress", use_container_width=True):
             st.markdown(f"""
             <div class="metric-card-blue">
             <h4>Baseline (3-Day Avg)</h4>
-            <h2>{baseline:.2f}</h2>
+            <h2>{stress_avg:.2f}</h2>
             </div>
             """, unsafe_allow_html=True)
 
@@ -240,27 +300,66 @@ if st.button("🚀 Analyze Stress", use_container_width=True):
             </div>
             """, unsafe_allow_html=True)
 
-        # ===============================
+        
         # VISUAL
-        # ===============================
+        
         st.markdown("## 📈 Stress Comparison")
 
         chart = pd.DataFrame({
             "Type": ["Predicted", "Baseline"],
-            "Value": [pred, baseline]
+            "Value": [pred, stress_avg]
         })
 
         st.bar_chart(chart.set_index("Type"))
 
-        # ===============================
+        
         # EXPLANATION
-        # ===============================
+        
         st.markdown("## 🧠 AI Insights")
 
-        st.markdown("""
-        - Behavioral patterns influence stress levels  
-        - Activity and mobility impact mental state  
-        - Sleep and night patterns affect emotional balance  
-        """)
+        try:
+            # Fix input shape
+            X_input = np.array(X_input).reshape(1, -1)
+
+            rf_model = base_models[-1]
+
+            explainer = shap.TreeExplainer(rf_model)
+            shap_values = explainer.shap_values(X_input)
+
+            feature_names = [
+                "Screen Time",
+                "Conversation",
+                "Mobility",
+                "Dark Time",
+                "Recent Stress"
+            ]
+
+            shap_df = pd.DataFrame({
+                "Feature": feature_names,
+                "Impact": shap_values[0]
+            })
+
+            shap_df["abs"] = shap_df["Impact"].abs()
+            shap_df = shap_df.sort_values("abs", ascending=True)
+
+            # Plot
+            fig, ax = plt.subplots()
+            ax.barh(shap_df["Feature"], shap_df["Impact"])
+            ax.set_title("Feature Contribution to Stress")
+            ax.set_xlabel("Impact")
+
+            st.pyplot(fig)
+
+            # Text explanation
+            st.markdown("### 🔍 Key Factors")
+
+            top = shap_df.sort_values("abs", ascending=False).head(3)
+
+            for _, row in top.iterrows():
+                direction = "increased" if row["Impact"] > 0 else "reduced"
+                st.write(f"- {row['Feature']} **{direction}** your stress")
+
+        except Exception as e:
+            st.error(f"SHAP ERROR: {e}")
 
         st.success("Analysis complete ✔")
